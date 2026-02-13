@@ -1,0 +1,334 @@
+openapi: 3.0.3
+info:
+  title: Gold Loan API
+  version: v1
+  description: Banking-grade, multi-tenant, idempotent-safe REST APIs for gold loan processing.
+servers:
+  - url: https://api.yourdomain.com/api/v1
+security:
+  - bearerAuth: []
+  - tenantHeader: []
+paths:
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login user
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, bank_code, branch_code]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+                bank_code: { type: string }
+                branch_code: { type: string }
+      responses:
+        '200':
+          description: Login success
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          access_token: { type: string }
+                          refresh_token: { type: string }
+                          role: { type: string, enum: [SUPER_ADMIN, BANK_ADMIN, BRANCH_ADMIN, APPRAISER] }
+                          expires_in: { type: integer }
+  /auth/face-verify:
+    post:
+      tags: [Auth]
+      summary: Verify appraiser face
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [appraiser_id, image_id]
+              properties:
+                appraiser_id: { type: string, format: uuid }
+                image_id: { type: string, format: uuid }
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+  /appraisers:
+    post:
+      tags: [Appraisers]
+      summary: Create appraiser
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAppraiserRequest'
+      responses:
+        '201':
+          $ref: '#/components/responses/Success'
+    get:
+      tags: [Appraisers]
+      summary: List appraisers
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+  /customers:
+    post:
+      tags: [Customers]
+      summary: Create customer
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [customer_code, name, face_image_id]
+              properties:
+                customer_code: { type: string }
+                name: { type: string }
+                face_image_id: { type: string, format: uuid }
+      responses:
+        '201':
+          $ref: '#/components/responses/Success'
+  /loans:
+    post:
+      tags: [Loans]
+      summary: Create loan
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [customer_id, appraiser_id, bank_id, branch_id]
+              properties:
+                customer_id: { type: string, format: uuid }
+                appraiser_id: { type: string, format: uuid }
+                bank_id: { type: string, format: uuid }
+                branch_id: { type: string, format: uuid }
+      responses:
+        '201':
+          $ref: '#/components/responses/Success'
+  /loans/{loan_id}:
+    get:
+      tags: [Loans]
+      summary: Fetch loan
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/LoanId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+  /loans/{loan_id}/compliance:
+    post:
+      tags: [Compliance]
+      summary: Capture RBI compliance
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/LoanId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ComplianceRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '403':
+          $ref: '#/components/responses/Error'
+  /loans/{loan_id}/purity-test:
+    post:
+      tags: [Purity]
+      summary: Trigger purity test
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/LoanId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+        '403':
+          $ref: '#/components/responses/Error'
+    get:
+      tags: [Purity]
+      summary: Get purity results
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/LoanId'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+  /images/upload-url:
+    post:
+      tags: [Images]
+      summary: Generate S3 upload URL
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [image_type, loan_id]
+              properties:
+                image_type: { type: string, enum: [APPRAISER_FACE, CUSTOMER_FACE, JEWEL, OVERALL] }
+                loan_id: { type: string, format: uuid }
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+  /loans/{loan_id}/summary:
+    post:
+      tags: [Summary]
+      summary: Generate immutable loan summary snapshot
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/LoanId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+  /loans/{loan_id}/complete:
+    post:
+      tags: [Loans]
+      summary: Complete/lock loan
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - $ref: '#/components/parameters/LoanId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+  /audit:
+    get:
+      tags: [Audit]
+      summary: Fetch audit by entity
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+        - in: query
+          name: entity_type
+          required: true
+          schema: { type: string }
+        - in: query
+          name: entity_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          $ref: '#/components/responses/Success'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    tenantHeader:
+      type: apiKey
+      in: header
+      name: X-Tenant-ID
+  parameters:
+    TenantId:
+      in: header
+      name: X-Tenant-ID
+      required: true
+      schema: { type: string, format: uuid }
+    LoanId:
+      in: path
+      name: loan_id
+      required: true
+      schema: { type: string, format: uuid }
+    IdempotencyKey:
+      in: header
+      name: Idempotency-Key
+      required: true
+      schema: { type: string, format: uuid }
+  schemas:
+    Meta:
+      type: object
+      required: [request_id, timestamp, version]
+      properties:
+        request_id: { type: string, format: uuid }
+        timestamp: { type: string, format: date-time }
+        version: { type: string, example: v1 }
+    SuccessEnvelope:
+      type: object
+      required: [success, data, meta]
+      properties:
+        success: { type: boolean, example: true }
+        data: { type: object, additionalProperties: true }
+        meta:
+          $ref: '#/components/schemas/Meta'
+    ErrorEnvelope:
+      type: object
+      required: [success, error, meta]
+      properties:
+        success: { type: boolean, example: false }
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }
+        meta:
+          $ref: '#/components/schemas/Meta'
+    CreateAppraiserRequest:
+      type: object
+      required: [name, email, phone, branch_id, appraiser_code, face_image_id]
+      properties:
+        name: { type: string }
+        email: { type: string, format: email }
+        phone: { type: string }
+        branch_id: { type: string, format: uuid }
+        appraiser_code: { type: string }
+        face_image_id: { type: string, format: uuid }
+    ComplianceRequest:
+      type: object
+      required: [total_jewel_count, overall_image_id, jewel_images]
+      properties:
+        total_jewel_count: { type: integer, minimum: 1 }
+        overall_image_id: { type: string, format: uuid }
+        jewel_images:
+          type: array
+          items:
+            type: object
+            required: [index, image_id]
+            properties:
+              index: { type: integer, minimum: 1 }
+              image_id: { type: string, format: uuid }
+  responses:
+    Success:
+      description: Standard success envelope
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SuccessEnvelope'
+    Error:
+      description: Standard error envelope
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
